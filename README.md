@@ -42,8 +42,9 @@ func main() {
         "eyJhbGciOiJFUzI1NksiLCJraWQiOiJkaWQ6bmRhOnRlc3RuZXQ6MHgxNmM1MTMwZGVmNjQ5NmY1ZGU5M2Y5MDc2YTVjZWIwNWNlNTllNGIwI2tleS0xIiwidHlwIjoiSldUIn0...",
     }
     holderDid := "did:nda:testnet:0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4"
+    address := "0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4" // Address for signing
     
-    token, err := authInstance.CreateToken(context.Background(), vcJwts, holderDid)
+    token, err := authInstance.CreateToken(context.Background(), vcJwts, holderDid, address)
     if err != nil {
         panic(err)
     }
@@ -55,6 +56,30 @@ func main() {
     }
     
     // Process claims...
+    
+    // Or verify into custom structs
+    type MyClaims struct {
+        Issuer      string   `json:"issuer"`
+        Capsule     string   `json:"capsule"`
+        CID         string   `json:"cid"`
+        ID          string   `json:"id"`
+        Permissions []string `json:"permissions"`
+        Role        string   `json:"role"`
+    }
+    
+    targets := []any{
+        &MyClaims{},
+        &MyClaims{},
+    }
+    
+    err = authInstance.VerifyTokenWithStructs(context.Background(), token, targets)
+    if err != nil {
+        panic(err)
+    }
+    
+    // Access parsed claims
+    firstClaim := targets[0].(*MyClaims)
+    fmt.Println("Role:", firstClaim.Role)
 }
 ```
 
@@ -74,10 +99,13 @@ func main() {
 ```go
 type Auth interface {
     // CreateToken creates a new VP token with a list of VCs
-    CreateToken(ctx context.Context, vcsJwt []string, holderDid string) (string, error)
+    CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...any) (string, error)
 
     // VerifyToken verifies a VP token and extracts VC claims
     VerifyToken(ctx context.Context, token string) ([]VcClaims, error)
+
+    // VerifyTokenWithStructs verifies a VP token and parses claims into structs
+    VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error
 }
 ```
 
@@ -115,11 +143,12 @@ authInstance := auth.NewAuthWithDefaultProvider(
 ### Creating a VP Token
 
 ```go
-token, err := authInstance.CreateToken(ctx, vcsJwt, holderDid)
+token, err := authInstance.CreateToken(ctx, vcsJwt, holderDid, opts...)
 ```
 
 - **`vcsJwt`**: Array of VC JWT tokens to include in the presentation
 - **`holderDid`**: DID of the entity presenting the credentials
+- **`opts`**: Optional variadic arguments passed to the provider's Sign method (e.g., address for signing)
 - **Returns**: JSON string containing the VP token
 
 ### Verifying a VP Token
@@ -131,12 +160,40 @@ claims, err := authInstance.VerifyToken(ctx, token)
 - **`token`**: VP token JSON string to verify
 - **Returns**: Array of `VcClaims` containing issuer and subject information
 
+### Verifying a VP Token with Structs
+
+```go
+// Define your custom struct with flattened fields
+type Claims struct {
+    Issuer      string   `json:"issuer"`
+    Capsule     string   `json:"capsule"`
+    CID         string   `json:"cid"`
+    ID          string   `json:"id"`
+    Permissions []string `json:"permissions"`
+    Role        string   `json:"role"`
+}
+
+// Verify and parse into structs
+targets := []any{
+    &Claims{},
+    &Claims{}, // One struct per VC in the token
+}
+
+err := authInstance.VerifyTokenWithStructs(ctx, token, targets)
+```
+
+- **`token`**: VP token JSON string to verify
+- **`targets`**: Array of pointers to structs (one for each VC in the token)
+- **Returns**: Error if verification or parsing fails
+
+**Note**: The function automatically flattens the credential structure, merging `credentialSubject` fields to the top level. Your struct should match this flattened structure (with `issuer` and all `credentialSubject` fields at the same level).
+
 ### VcClaims Structure
 
 ```go
 type VcClaims struct {
-    Issuer  string                 `json:"issuer"`
-    Subject map[string]interface{} `json:"CredentialSubject"`
+    Issuer            string                 `json:"issuer"`
+    CredentialSubject map[string]interface{} `json:"credentialSubject"`
 }
 ```
 
@@ -162,6 +219,7 @@ See `example_auth_test.go` for complete usage examples including:
 - Creating an Auth instance
 - Creating VP tokens
 - Verifying VP tokens
+- Verifying VP tokens into custom structs
 - Complete workflow examples
 
 ## Dependencies
@@ -175,6 +233,3 @@ See `example_auth_test.go` for complete usage examples including:
 - HashiCorp Vault with `ethsign` plugin enabled
 - Access to a DID resolver service
 
-## License
-
-[Add your license here]
