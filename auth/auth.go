@@ -7,16 +7,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/pilacorp/nda-auth-sdk/provider"
-
 	vcdto "github.com/pilacorp/go-credential-sdk/credential/common/dto"
 	"github.com/pilacorp/go-credential-sdk/credential/vc"
 	"github.com/pilacorp/go-credential-sdk/credential/vp"
+	"github.com/pilacorp/nda-auth-sdk/provider"
 )
 
 type Auth interface {
 	// CreateToken creates a new VP token with a list of VCs.
-	CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts *provider.ProviderOption) (string, error)
+	CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...provider.SignOption) (string, error)
 
 	// VerifyToken verifies a VP token with a list of VCs.
 	VerifyToken(ctx context.Context, token string) ([]VcClaims, error)
@@ -40,7 +39,7 @@ func NewAuth(p provider.Provider, didUrl string) Auth {
 }
 
 // CreateToken creates a new VP token with a list of VCs.
-func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts *provider.ProviderOption) (string, error) {
+func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...provider.SignOption) (string, error) {
 	vcs := make([]vc.Credential, len(vcsJwt))
 	for i, vcJwt := range vcsJwt {
 		vc, err := vc.ParseCredential([]byte(vcJwt))
@@ -72,9 +71,7 @@ func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid strin
 	}
 
 	hash := sha256.Sum256(signData)
-	signature, err := a.provider.Sign(ctx, hash[:], &provider.ProviderOption{
-		SignerAddress: opts.SignerAddress,
-	})
+	signature, err := a.provider.Sign(ctx, hash[:], opts...)
 
 	if err != nil {
 		return "", err

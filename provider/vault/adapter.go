@@ -1,9 +1,9 @@
-package provider
+package vault
 
 import (
 	"context"
-	"errors"
 
+	"github.com/pilacorp/nda-auth-sdk/provider"
 	"github.com/pilacorp/nda-auth-sdk/vault"
 )
 
@@ -14,21 +14,18 @@ type vaultProvider struct {
 
 // NewVaultProvider creates a new vaultProvider instance.
 // It connects to Vault using the provided address and token and optional max retries.
-func NewVaultProvider(address, token string, maxRetries ...int) Provider {
+func NewVaultProvider(address, token string, maxRetries ...int) provider.Provider {
 	return &vaultProvider{
 		vault: vault.NewVault(address, token, maxRetries...),
 	}
 }
 
 // Sign signs the payload using Vault.
-func (v *vaultProvider) Sign(ctx context.Context, payload []byte, options *ProviderOption) ([]byte, error) {
-	if options == nil {
-		return nil, errors.New("provider option is required")
+func (v *vaultProvider) Sign(ctx context.Context, payload []byte, opts ...provider.SignOption) ([]byte, error) {
+	options := &provider.SignOptions{}
+	for _, opt := range opts {
+		opt(options)
 	}
 
-	signerAddress := options.SignerAddress
-	if signerAddress == "" {
-		return nil, errors.New("signer address is required")
-	}
-	return v.vault.SignMessage(ctx, payload, signerAddress)
+	return v.vault.SignMessage(ctx, payload, options.SignerAddress)
 }

@@ -5,14 +5,15 @@ import (
 	"encoding/json"
 	"fmt"
 
-	auth "github.com/pilacorp/nda-auth-sdk"
+	"github.com/pilacorp/nda-auth-sdk/auth"
 	"github.com/pilacorp/nda-auth-sdk/provider"
+	"github.com/pilacorp/nda-auth-sdk/provider/vault"
 )
 
 // ExampleNewAuth demonstrates how to create a new Auth instance.
 func ExampleNewAuth() {
 	// Create a Vault provider for signing operations
-	vaultProvider := provider.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
+	vaultProvider := vault.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
 
 	// Create an Auth instance with the provider and DID URL
 	authInstance := auth.NewAuth(vaultProvider, "https://auth-dev.pila.vn/api/v1/did")
@@ -24,7 +25,7 @@ func ExampleNewAuth() {
 // ExampleAuth_CreateToken demonstrates how to create a VP token from Verifiable Credentials.
 func ExampleAuth_CreateToken() {
 	// Initialize Auth with provider
-	vaultProvider := provider.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
+	vaultProvider := vault.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
 	authInstance := auth.NewAuth(vaultProvider, "https://auth-dev.pila.vn/api/v1/did")
 
 	// Prepare VC JWT tokens (these are example tokens - replace with real ones)
@@ -37,9 +38,9 @@ func ExampleAuth_CreateToken() {
 	holderDid := "did:nda:testnet:0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4"
 
 	// Create a VP token containing the VCs
-	token, err := authInstance.CreateToken(context.Background(), vcJwts, holderDid, &provider.ProviderOption{
-		SignerAddress: "0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4",
-	})
+	token, err := authInstance.CreateToken(context.Background(), vcJwts, holderDid, provider.SignOption(
+		provider.WithSignerAddress("0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4"),
+	))
 
 	if err != nil {
 		fmt.Printf("Error creating token: %v\n", err)
@@ -53,7 +54,7 @@ func ExampleAuth_CreateToken() {
 // ExampleAuth_VerifyToken demonstrates how to verify a VP token and extract VC claims.
 func ExampleAuth_VerifyToken() {
 	// Initialize Auth with provider
-	vaultProvider := provider.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
+	vaultProvider := vault.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
 	authInstance := auth.NewAuth(vaultProvider, "https://auth-dev.pila.vn/api/v1/did")
 
 	// VP token to verify (this would typically come from a client request)
@@ -79,7 +80,7 @@ func ExampleAuth_VerifyToken() {
 // ExampleAuth_workflow demonstrates a complete workflow: creating and verifying a token.
 func ExampleAuth_workflow() {
 	// Step 1: Initialize Auth
-	vaultProvider := provider.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
+	vaultProvider := vault.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
 	authInstance := auth.NewAuth(vaultProvider, "https://auth-dev.pila.vn/api/v1/did")
 
 	// Step 2: Create a token from VCs
@@ -88,9 +89,10 @@ func ExampleAuth_workflow() {
 	}
 	holderDid := "did:nda:testnet:0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4"
 
-	token, err := authInstance.CreateToken(context.Background(), vcJwts, holderDid, &provider.ProviderOption{
-		SignerAddress: "0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4",
-	})
+	token, err := authInstance.CreateToken(context.Background(), vcJwts, holderDid, provider.SignOption(
+		provider.WithSignerAddress("0x2af7e8ebfec14f5e39469d2ce8442a5eef9f3fa4"),
+	))
+
 	if err != nil {
 		fmt.Printf("Failed to create token: %v\n", err)
 		return
