@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
+	"fmt"
 
 	"github.com/pilacorp/nda-auth-sdk/provider"
 
@@ -15,7 +16,7 @@ import (
 
 type Auth interface {
 	// CreateToken creates a new VP token with a list of VCs.
-	CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...any) (string, error)
+	CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts *provider.ProviderOption) (string, error)
 
 	// VerifyToken verifies a VP token with a list of VCs.
 	VerifyToken(ctx context.Context, token string) ([]VcClaims, error)
@@ -39,7 +40,7 @@ func NewAuth(p provider.Provider, didUrl string) Auth {
 }
 
 // CreateToken creates a new VP token with a list of VCs.
-func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...any) (string, error) {
+func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts *provider.ProviderOption) (string, error) {
 	vcs := make([]vc.Credential, len(vcsJwt))
 	for i, vcJwt := range vcsJwt {
 		vc, err := vc.ParseCredential([]byte(vcJwt))
@@ -71,7 +72,10 @@ func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid strin
 	}
 
 	hash := sha256.Sum256(signData)
-	signature, err := a.provider.Sign(hash[:], opts...)
+	signature, err := a.provider.Sign(ctx, hash[:], &provider.ProviderOption{
+		SignerAddress: opts.SignerAddress,
+	})
+
 	if err != nil {
 		return "", err
 	}
@@ -79,6 +83,7 @@ func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid strin
 	err = vpPresentation.AddCustomProof(&vcdto.Proof{
 		Signature: signature,
 	})
+
 	if err != nil {
 		return "", err
 	}
@@ -149,8 +154,14 @@ func (a *auth) VerifyToken(ctx context.Context, token string) ([]VcClaims, error
 			return nil, err
 		}
 
+		// check issuer is string
+		issuerVal, ok := credContents["issuer"].(string)
+		if !ok {
+			return nil, fmt.Errorf("invalid issuer field: expected string")
+		}
+
 		vcClaimsList = append(vcClaimsList, VcClaims{
-			Issuer:            credContents["issuer"].(string),
+			Issuer:            issuerVal,
 			CredentialSubject: credContents["credentialSubject"].(map[string]any),
 		})
 	}
@@ -158,6 +169,7 @@ func (a *auth) VerifyToken(ctx context.Context, token string) ([]VcClaims, error
 	return vcClaimsList, nil
 }
 
+// VerifyTokenWithStructs verifies a VP token and parses claims into structs.
 func (a *auth) VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error {
 	vpPresentation, err := vp.ParseJWTPresentation(token, vp.WithVerifyProof(), vp.WithVCValidation())
 	if err != nil {

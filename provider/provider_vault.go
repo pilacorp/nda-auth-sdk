@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"github.com/pilacorp/nda-auth-sdk/vault"
 )
@@ -21,11 +21,14 @@ func NewVaultProvider(address, token string, maxRetries ...int) Provider {
 }
 
 // Sign signs the payload using Vault.
-func (v *vaultProvider) Sign(payload []byte, opts ...any) ([]byte, error) {
-	if len(opts) == 0 {
-		return nil, fmt.Errorf("signer address is required")
+func (v *vaultProvider) Sign(ctx context.Context, payload []byte, options ...*ProviderOption) ([]byte, error) {
+	if len(options) == 0 {
+		return nil, errors.New("provider option is required")
 	}
 
-	signerAddress := opts[0]
-	return v.vault.SignMessage(context.Background(), payload, signerAddress.(string))
+	signerAddress := options[0].SignerAddress
+	if signerAddress == "" {
+		return nil, errors.New("signer address is required")
+	}
+	return v.vault.SignMessage(ctx, payload, signerAddress)
 }
