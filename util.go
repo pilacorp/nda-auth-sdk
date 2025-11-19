@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"encoding/json"
+	"log"
 	"strings"
 )
 
@@ -13,4 +15,27 @@ func ExtractAddressFromDID(did string) string {
 		return did // Return original string if no colon found
 	}
 	return did[lastColonIndex+1:]
+}
+
+// ParseVcClaimsWithStructs parses each VcClaim using corresponding struct from targets
+// targets should be pointers to structs (e.g., &UserCredential{}, &CompanyCredential{})
+func ParseVcClaimsWithStructs(vcClaims []map[string]any, targets []any) error {
+	if len(vcClaims) != len(targets) {
+		log.Fatalf("claims count (%d) must match targets count (%d)", len(vcClaims), len(targets))
+	}
+
+	for i, claim := range vcClaims {
+		// Convert map to JSON bytes
+		jsonBytes, err := json.Marshal(claim)
+		if err != nil {
+			log.Fatalf("marshal error at index %d: %v", i, err)
+		}
+
+		// Unmarshal into user's struct (must be a pointer)
+		if err := json.Unmarshal(jsonBytes, targets[i]); err != nil {
+			log.Fatalf("unmarshal error at index %d: %v", i, err)
+		}
+	}
+
+	return nil
 }

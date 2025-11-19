@@ -19,6 +19,9 @@ type Auth interface {
 
 	// VerifyToken verifies a VP token with a list of VCs.
 	VerifyToken(ctx context.Context, token string) ([]VcClaims, error)
+
+	// VerifyTokenWithStructs verifies a VP token with a list of VCs and parses the claims into a list of structs.
+	VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error
 }
 
 type auth struct {
@@ -153,4 +156,73 @@ func (a *auth) VerifyToken(ctx context.Context, token string) ([]VcClaims, error
 	}
 
 	return vcClaimsList, nil
+}
+
+func (a *auth) VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error {
+	vpPresentation, err := vp.ParseJWTPresentation(token, vp.WithVerifyProof(), vp.WithVCValidation())
+	if err != nil {
+		return err
+	}
+
+	// Get VP contents
+	vpContentsBytes, err := vpPresentation.GetContents()
+	if err != nil {
+		return err
+	}
+
+	// Parse VP contents as JSON
+	var vpData map[string]any
+	if err := json.Unmarshal(vpContentsBytes, &vpData); err != nil {
+		return err
+	}
+
+	// Extract verifiableCredential array
+	vcsRaw, ok := vpData["verifiableCredential"]
+	if !ok {
+		return errors.New("no verifiableCredential found in VP")
+	}
+
+	vcsArray, ok := vcsRaw.([]any)
+	if !ok {
+		return errors.New("verifiableCredential is not an array")
+	}
+
+	vcClaimsList := make([]map[string]any, len(vcsArray))
+
+	for i, vcItem := range vcsArray {
+		var credential vc.Credential
+		var err error
+
+		credential, err = vc.ParseCredential([]byte(vcItem.(string)))
+		if err != nil {
+			return err
+		}
+
+		credContentsBytes, err := credential.GetContents()
+		if err != nil {
+			return err
+		}
+
+		var credContents map[string]any
+		if err := json.Unmarshal(credContentsBytes, &credContents); err != nil {
+			return err
+		}
+
+		// Flatten the structure: merge issuer and credentialSubject fields into top level
+		vcClaimsList[i] = make(map[string]any)
+
+		// Add issuer at top level
+		if issuer, ok := credContents["issuer"]; ok {
+			vcClaimsList[i]["issuer"] = issuer
+		}
+
+		// Flatten credentialSubject fields to top level
+		if credentialSubject, ok := credContents["credentialSubject"].(map[string]any); ok {
+			for k, v := range credentialSubject {
+				vcClaimsList[i][k] = v
+			}
+		}
+	}
+
+	return ParseVcClaimsWithStructs(vcClaimsList, targets)
 }
