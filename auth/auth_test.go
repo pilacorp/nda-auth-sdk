@@ -22,7 +22,7 @@ func TestNewAuth(t *testing.T) {
 	}
 }
 
-// TestCreateTokenWithVaultProvider  ensures create token by vault returns a non-nil token.
+// TestCreateTokenWithVaultProvider ensures create token by vault returns a non-nil token.
 func TestCreateTokenWithVaultProvider(t *testing.T) {
 	vaultProvider := vault.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
 	a := auth.NewAuth(vaultProvider, "https://auth-dev.pila.vn/api/v1/did")
