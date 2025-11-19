@@ -22,7 +22,7 @@ func TestNewAuth(t *testing.T) {
 	}
 }
 
-// Test CreateToken ensures CreateToken returns a non-nil token.
+// Test CreateToken By Vault Provider ensures returns a non-nil token.
 func TestCreateTokenWithVaultProvider(t *testing.T) {
 	vaultProvider := vault.NewVaultProvider("https://vault-dev.pila.vn", "", 3)
 	a := auth.NewAuth(vaultProvider, "https://auth-dev.pila.vn/api/v1/did")
@@ -45,7 +45,7 @@ func TestCreateTokenWithVaultProvider(t *testing.T) {
 	fmt.Println(token)
 }
 
-// TestCreateTokenWithEthereumProvider ensures CreateToken returns a non-nil token using Ethereum provider.
+// TestCreateTokenWithEthereumProvider ensures returns a non-nil token using Ethereum provider.
 func TestCreateTokenWithEthereumProvider(t *testing.T) {
 	// Use a test private key (32 bytes for secp256k1)
 	// This is a test key - in production, use a secure key management system
