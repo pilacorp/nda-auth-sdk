@@ -131,11 +131,12 @@ func (a *auth) VerifyToken(ctx context.Context, token string) ([]VcClaims, error
 	// Parse each VC and extract CredentialContents
 	var vcClaimsList []VcClaims
 	for _, vcItem := range vcsArray {
-		var credential vc.Credential
-		var err error
+		vcBytes, err := convertVCItemToBytes(vcItem)
+		if err != nil {
+			return nil, err
+		}
 
-		credential, err = vc.ParseCredential([]byte(vcItem.(string)))
-
+		credential, err := vc.ParseCredential(vcBytes)
 		if err != nil {
 			return nil, err
 		}
@@ -199,10 +200,12 @@ func (a *auth) VerifyTokenWithStructs(ctx context.Context, token string, targets
 	vcClaimsList := make([]map[string]any, len(vcsArray))
 
 	for i, vcItem := range vcsArray {
-		var credential vc.Credential
-		var err error
+		vcBytes, err := convertVCItemToBytes(vcItem)
+		if err != nil {
+			return err
+		}
 
-		credential, err = vc.ParseCredential([]byte(vcItem.(string)))
+		credential, err := vc.ParseCredential(vcBytes)
 		if err != nil {
 			return err
 		}

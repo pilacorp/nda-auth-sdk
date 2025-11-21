@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"strings"
 )
@@ -38,4 +39,21 @@ func ParseVcClaimsWithStructs(vcClaims []map[string]any, targets []any) error {
 	}
 
 	return nil
+}
+
+// convertVCItemToBytes converts a VC item (string or map) to bytes for parsing.
+// It handles both JWT string format and already-parsed JSON map format.
+func convertVCItemToBytes(vcItem any) ([]byte, error) {
+	switch v := vcItem.(type) {
+	case string:
+		return []byte(v), nil
+	case map[string]interface{}:
+		vcBytes, err := json.Marshal(v)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal VC: %w", err)
+		}
+		return vcBytes, nil
+	default:
+		return nil, fmt.Errorf("unexpected VC type: %T", vcItem)
+	}
 }
