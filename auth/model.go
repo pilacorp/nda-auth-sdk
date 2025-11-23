@@ -14,9 +14,3 @@ type CredentialContent struct {
 type PresentationContents struct {
 	Presentation vp.PresentationContents `json:"presentation"`
 }
-
-// VcClaims represents the claims for a Verifiable Credential.
-type VcClaims struct {
-	Issuer            string         `json:"issuer"`
-	CredentialSubject map[string]any `json:"credentialSubject"`
-}
