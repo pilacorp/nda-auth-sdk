@@ -61,11 +61,12 @@ func ExampleAuth_VerifyToken() {
 	token := "eyJhbGciOiJFUzI1NksiLCJraWQiOiJkaWQ6bmRhOnRlc3RuZXQ6MHgyYWY3ZThlYmZlYzE0ZjVlMzk0NjlkMmNlODQ0MmE1ZWVmOWYzZmE0I2tleS0xIiwidHlwIjoiSldUIn0..."
 
 	// Verify the token and extract VC claims
-	claims, _, err := authInstance.VerifyToken(context.Background(), token)
+	claims, _, vcJwts, err := authInstance.VerifyToken(context.Background(), token)
 	if err != nil {
 		fmt.Printf("Error verifying token: %v\n", err)
 		return
 	}
+	fmt.Printf("VC JWTs: %v\n", vcJwts)
 
 	// Process the claims
 	for i, claim := range claims {
@@ -99,12 +100,13 @@ func ExampleAuth_workflow() {
 	}
 
 	// Step 3: Verify the token
-	claims, _, err := authInstance.VerifyToken(context.Background(), token)
+	claims, _, vcJwts, err := authInstance.VerifyToken(context.Background(), token)
 	if err != nil {
 		fmt.Printf("Failed to verify token: %v\n", err)
 		return
 	}
 
 	fmt.Printf("Workflow completed: created and verified token with %d credential(s)\n", len(claims))
+	fmt.Printf("VC JWTs: %v\n", vcJwts)
 	// Output: Workflow completed: created and verified token with <number> credential(s)
 }

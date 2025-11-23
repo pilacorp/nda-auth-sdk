@@ -17,7 +17,7 @@ type Auth interface {
 	CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...provider.SignOption) (string, error)
 
 	// VerifyToken verifies a VP token with a list of VCs.
-	VerifyToken(ctx context.Context, token string) ([]map[string]any, string, error)
+	VerifyToken(ctx context.Context, token string) ([]map[string]any, string, []string, error)
 
 	// VerifyTokenWithStructs verifies a VP token with a list of VCs and parses the claims into a list of structs.
 	VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error
@@ -98,60 +98,68 @@ func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid strin
 }
 
 // VerifyToken verifies a VP token with a list of VCs.
-func (a *auth) VerifyToken(ctx context.Context, token string) ([]map[string]any, string, error) {
+func (a *auth) VerifyToken(ctx context.Context, token string) ([]map[string]any, string, []string, error) {
 	vpPresentation, err := vp.ParseJWTPresentation(token, vp.WithVerifyProof(), vp.WithVCValidation())
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 
 	// Get VP contents
 	vpContentsBytes, err := vpPresentation.GetContents()
 	if err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 
 	// Parse VP contents as JSON
 	var vpData map[string]any
 	if err := json.Unmarshal(vpContentsBytes, &vpData); err != nil {
-		return nil, "", err
+		return nil, "", nil, err
 	}
 
 	//extract holder from vp data
 	holder, ok := vpData["holder"].(string)
 	if !ok {
-		return nil, "", errors.New("no holder found in VP")
+		return nil, "", nil, errors.New("no holder found in VP")
 	}
 
 	// Extract verifiableCredential array
 	vcsRaw, ok := vpData["verifiableCredential"]
 	if !ok {
-		return nil, "", errors.New("no verifiableCredential found in VP")
+		return nil, "", nil, errors.New("no verifiableCredential found in VP")
 	}
 
 	vcsArray, ok := vcsRaw.([]any)
 	if !ok {
-		return nil, "", errors.New("verifiableCredential is not an array")
+		return nil, "", nil, errors.New("verifiableCredential is not an array")
 	}
 
 	vcClaimsList := make([]map[string]any, len(vcsArray))
-
+	// init list string contain vc jwt
+	vcJwtList := make([]string, len(vcsArray))
 	for i, vcItem := range vcsArray {
 		var credential vc.Credential
 		var err error
 
-		credential, err = vc.ParseCredential([]byte(vcItem.(string)))
+		//add vc jwt to list and check type to avoid panic
+		vcJwt, ok := vcItem.(string)
+		if !ok {
+			return nil, "", nil, errors.New("verifiableCredential is not a string")
+		}
+		vcJwtList[i] = vcJwt
+
+		credential, err = vc.ParseCredential([]byte(vcJwt))
 		if err != nil {
-			return nil, "", err
+			return nil, "", nil, err
 		}
 
 		credContentsBytes, err := credential.GetContents()
 		if err != nil {
-			return nil, "", err
+			return nil, "", nil, err
 		}
 
 		var credContents map[string]any
 		if err := json.Unmarshal(credContentsBytes, &credContents); err != nil {
-			return nil, "", err
+			return nil, "", nil, err
 		}
 
 		// Flatten the structure: merge issuer and credentialSubject fields into top level
@@ -170,7 +178,7 @@ func (a *auth) VerifyToken(ctx context.Context, token string) ([]map[string]any,
 		}
 	}
 
-	return vcClaimsList, holder, nil
+	return vcClaimsList, holder, vcJwtList, nil
 }
 
 // VerifyTokenWithStructs verifies a VP token and parses claims into structs.
