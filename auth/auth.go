@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
-	"fmt"
 
 	vcdto "github.com/pilacorp/go-credential-sdk/credential/common/dto"
 	"github.com/pilacorp/go-credential-sdk/credential/vc"
@@ -18,7 +17,7 @@ type Auth interface {
 	CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...provider.SignOption) (string, error)
 
 	// VerifyToken verifies a VP token with a list of VCs.
-	VerifyToken(ctx context.Context, token string) ([]VcClaims, error)
+	VerifyToken(ctx context.Context, token string) ([]map[string]any, string, error)
 
 	// VerifyTokenWithStructs verifies a VP token with a list of VCs and parses the claims into a list of structs.
 	VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error
@@ -99,71 +98,79 @@ func (a *auth) CreateToken(ctx context.Context, vcsJwt []string, holderDid strin
 }
 
 // VerifyToken verifies a VP token with a list of VCs.
-func (a *auth) VerifyToken(ctx context.Context, token string) ([]VcClaims, error) {
+func (a *auth) VerifyToken(ctx context.Context, token string) ([]map[string]any, string, error) {
 	vpPresentation, err := vp.ParseJWTPresentation(token, vp.WithVerifyProof(), vp.WithVCValidation())
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Get VP contents
 	vpContentsBytes, err := vpPresentation.GetContents()
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
 	// Parse VP contents as JSON
 	var vpData map[string]any
 	if err := json.Unmarshal(vpContentsBytes, &vpData); err != nil {
-		return nil, err
+		return nil, "", err
+	}
+
+	//extract holder from vp data
+	holder, ok := vpData["holder"].(string)
+	if !ok {
+		return nil, "", errors.New("no holder found in VP")
 	}
 
 	// Extract verifiableCredential array
 	vcsRaw, ok := vpData["verifiableCredential"]
 	if !ok {
-		return nil, errors.New("no verifiableCredential found in VP")
+		return nil, "", errors.New("no verifiableCredential found in VP")
 	}
 
 	vcsArray, ok := vcsRaw.([]any)
 	if !ok {
-		return nil, errors.New("verifiableCredential is not an array")
+		return nil, "", errors.New("verifiableCredential is not an array")
 	}
 
-	// Parse each VC and extract CredentialContents
-	var vcClaimsList []VcClaims
-	for _, vcItem := range vcsArray {
+	vcClaimsList := make([]map[string]any, len(vcsArray))
+
+	for i, vcItem := range vcsArray {
 		var credential vc.Credential
 		var err error
 
 		credential, err = vc.ParseCredential([]byte(vcItem.(string)))
-
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
-		// Get credential contents
 		credContentsBytes, err := credential.GetContents()
 		if err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
 		var credContents map[string]any
 		if err := json.Unmarshal(credContentsBytes, &credContents); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 
-		// check issuer is string
-		issuerVal, ok := credContents["issuer"].(string)
-		if !ok {
-			return nil, fmt.Errorf("invalid issuer field: expected string")
+		// Flatten the structure: merge issuer and credentialSubject fields into top level
+		vcClaimsList[i] = make(map[string]any)
+
+		// Add issuer at top level
+		if issuer, ok := credContents["issuer"]; ok {
+			vcClaimsList[i]["issuer"] = issuer
 		}
 
-		vcClaimsList = append(vcClaimsList, VcClaims{
-			Issuer:            issuerVal,
-			CredentialSubject: credContents["credentialSubject"].(map[string]any),
-		})
+		// Flatten credentialSubject fields to top level
+		if credentialSubject, ok := credContents["credentialSubject"].(map[string]any); ok {
+			for k, v := range credentialSubject {
+				vcClaimsList[i][k] = v
+			}
+		}
 	}
 
-	return vcClaimsList, nil
+	return vcClaimsList, holder, nil
 }
 
 // VerifyTokenWithStructs verifies a VP token and parses claims into structs.
