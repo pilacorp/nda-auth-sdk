@@ -2,7 +2,7 @@ package auth
 
 import (
 	"encoding/json"
-	"log"
+	"errors"
 	"strings"
 )
 
@@ -21,19 +21,19 @@ func ExtractAddressFromDID(did string) string {
 // targets should be pointers to structs (e.g., &UserCredential{}, &CompanyCredential{})
 func ParseVcClaimsWithStructs(vcClaims []map[string]any, targets []any) error {
 	if len(vcClaims) != len(targets) {
-		log.Fatalf("claims count (%d) must match targets count (%d)", len(vcClaims), len(targets))
+		return errors.New("length of vcClaims and targets must be the same")
 	}
 
 	for i, claim := range vcClaims {
 		// Convert map to JSON bytes
 		jsonBytes, err := json.Marshal(claim)
 		if err != nil {
-			log.Fatalf("marshal error at index %d: %v", i, err)
+			return errors.New("failed to marshal claim to JSON: " + err.Error())
 		}
 
 		// Unmarshal into user's struct (must be a pointer)
 		if err := json.Unmarshal(jsonBytes, targets[i]); err != nil {
-			log.Fatalf("unmarshal error at index %d: %v", i, err)
+			return errors.New("failed to unmarshal JSON to struct: " + err.Error())
 		}
 	}
 
