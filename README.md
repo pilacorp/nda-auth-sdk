@@ -2,10 +2,15 @@
 
 A Go SDK for working with **Verifiable Credentials (VCs)** and **Verifiable Presentations (VPs)**. This library provides a simple interface for creating and verifying VP tokens that contain one or more VCs, with support for cryptographic signing via HashiCorp Vault.
 
+**Now supports DID-CapChain v1.1**: A capability-based authorization system using W3C Verifiable Credentials for multi-hop delegation and service access control.
+
 ## Features
 
 - **Create VP Tokens**: Build Verifiable Presentations from multiple Verifiable Credentials
 - **Verify VP Tokens**: Validate VP tokens and extract credential claims
+- **DID-CapChain Support**: Create and verify CapChainPresentations with capability-based authorization
+- **Verification Phase**: Verify VP/VC cryptographic validity and parse capability context
+- **Authorization Phase**: Check service capabilities and resource capability chains with attenuation validation
 - **Vault Integration**: Secure key management and signing via HashiCorp Vault
 - **Provider Abstraction**: Extensible provider interface for custom signing implementations
 - **DID Support**: Full support for Decentralized Identifiers (DIDs)
@@ -99,13 +104,25 @@ func main() {
 ```go
 type Auth interface {
     // CreateToken creates a new VP token with a list of VCs
-    CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...any) (string, error)
+    CreateToken(ctx context.Context, vcsJwt []string, holderDid string, opts ...provider.SignOption) (string, error)
 
     // VerifyToken verifies a VP token and extracts VC claims
-    VerifyToken(ctx context.Context, token string) ([]VcClaims, error)
+    VerifyToken(ctx context.Context, token string) ([]map[string]any, string, []string, error)
 
     // VerifyTokenWithStructs verifies a VP token and parses claims into structs
     VerifyTokenWithStructs(ctx context.Context, token string, targets []any) error
+
+    // CreateCapChainPresentation creates a CapChainPresentation (DID-CapChain VP) with capability chains metadata
+    CreateCapChainPresentation(ctx context.Context, vcsJwt []string, holderDid string, audienceDid string, chains []CapChainRef, opts ...provider.SignOption) (string, error)
+
+    // VerifyVPContext performs Verification Phase - validates VP/VC and returns VerifiedVPContext
+    VerifyVPContext(ctx context.Context, token string) (*VerifiedVPContext, error)
+
+    // CheckServiceCapability performs ServiceCapability authorization check
+    CheckServiceCapability(ctx context.Context, vpCtx *VerifiedVPContext, serviceDID string, action string, trustedIssuers []string) (*AuthorizationResult, error)
+
+    // CheckResourceCapabilityChain performs ResourceCapabilityChain authorization check with attenuation validation
+    CheckResourceCapabilityChain(ctx context.Context, vpCtx *VerifiedVPContext, resourceURN string, action string) (*AuthorizationResult, error)
 }
 ```
 
@@ -196,6 +213,132 @@ type VcClaims struct {
     CredentialSubject map[string]interface{} `json:"credentialSubject"`
 }
 ```
+
+## DID-CapChain v1.1
+
+The SDK implements DID-CapChain v1.1, a capability-based authorization system that enables:
+
+- **Resource Capability Chains**: Delegate access rights on specific resources through multi-hop delegation
+- **Service Capabilities**: Grant permissions to call specific services with defined actions
+- **Attenuation**: Ensure delegated capabilities never exceed the parent's scope
+
+### Creating a CapChainPresentation
+
+```go
+// Define capability chains
+chains := []auth.CapChainRef{
+    {
+        Kind:   auth.CapKindResource,
+        Anchor: "urn:example:resource:123",
+        LeafID: "urn:vc:cap:VC2",
+    },
+    {
+        Kind:   auth.CapKindService,
+        Anchor: "did:svc:StorageX",
+        LeafID: "urn:vc:cap:VC3",
+    },
+}
+
+// Create CapChainPresentation
+token, err := authInstance.CreateCapChainPresentation(
+    ctx,
+    vcJwts,
+    holderDid,
+    audienceDid, // Service DID receiving the request
+    chains,
+    provider.WithSignerAddress(address),
+)
+```
+
+### Verification Phase
+
+The Verification Phase validates VP/VC cryptographic signatures and extracts capability context:
+
+```go
+vpCtx, err := authInstance.VerifyVPContext(ctx, token)
+if err != nil {
+    // Handle verification error
+}
+
+// Access verified context
+fmt.Printf("Holder: %s\n", vpCtx.HolderDID)
+fmt.Printf("Audience: %s\n", vpCtx.AudienceDID)
+fmt.Printf("VCs: %d\n", len(vpCtx.VCs))
+fmt.Printf("Chains: %d\n", len(vpCtx.Chains))
+```
+
+### Authorization Phase
+
+#### Service Capability Check
+
+Check if the actor has permission to call a service:
+
+```go
+trustedIssuers := []string{"did:svc:StorageX"}
+result, err := authInstance.CheckServiceCapability(
+    ctx,
+    vpCtx,
+    "did:svc:StorageX",
+    "file.read",
+    trustedIssuers,
+)
+
+if result.Authorized {
+    // Allow access
+} else {
+    // Deny access: result.Reason contains explanation
+}
+```
+
+#### Resource Capability Chain Check
+
+Check if the actor has a valid capability chain for accessing a resource:
+
+```go
+result, err := authInstance.CheckResourceCapabilityChain(
+    ctx,
+    vpCtx,
+    "urn:storagex:file:FILE_ID",
+    "read",
+)
+
+if result.Authorized {
+    // Allow access - chain validated with attenuation rule
+} else {
+    // Deny access: result.Reason contains explanation
+}
+```
+
+### Capability Types
+
+The SDK supports three types of capability credentials:
+
+1. **ResourceCapabilityCredential** (`CapKindResource`): Direct access rights on a resource
+2. **DelegatedCapabilityCredential** (`CapKindDelegate`): Delegated rights from another capability
+3. **ServiceCapabilityCredential** (`CapKindService`): Permission to call a service
+
+### Capability Structure
+
+```go
+type Capability struct {
+    Kind       CapabilityKind `json:"kind"`
+    Resource   string         `json:"resource,omitempty"`
+    Service    string         `json:"service,omitempty"`
+    Actions    []string       `json:"actions,omitempty"`
+    OnBehalfOf string         `json:"onBehalfOf,omitempty"`
+    Parent     string         `json:"parent,omitempty"`
+}
+```
+
+### Attenuation Rule
+
+The attenuation rule ensures that delegated capabilities cannot exceed the parent's scope:
+
+- Actions(child) ⊆ Actions(parent)
+- Resource(child) = Resource(parent)
+- Delegation flow: parent.Subject == child.Issuer
+
+This rule is automatically enforced during `CheckResourceCapabilityChain` validation.
 
 ## Vault Integration
 
